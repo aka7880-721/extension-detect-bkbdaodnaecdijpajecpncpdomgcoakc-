@@ -2,63 +2,88 @@
 
 Plain-JavaScript proof of concept for extension `bkbdaodnaecdijpajecpncpdomgcoakc` (**eID Chrome Extension**, e-Contract.be), runnable from `http://localhost:3000` or the DevTools console.
 
-## Why iframe content inspection
+## Primary signal on localhost: allowlisted-site iframe
 
-Version **1.0.3** has **no `web_accessible_resources`**. That means:
+The eID extension (manifest **1.0.3**) has **no `externally_connectable`**, so Chrome does **not** inject `chrome.runtime` into `http://127.0.0.1` / `localhost` pages. Runtime error-string probing only works when the extension (or Chrome policy) exposes that API to your origin.
 
-- `<img src="chrome-extension://…/icon128.png">` usually **errors** even when the extension is installed.
-- `fetch(chrome-extension://…/manifest.json)` usually **fails** (blocked/CORS).
+On **localhost**, the detector instead embeds **`https://www.e-contract.be/`** in a hidden iframe. The extension’s **content script** runs on that origin and broadcasts `postMessage` types such as `eid-chrome-extension`. The parent page accepts messages only when:
 
-Those probes are kept **informational only** (`img.imgWorks: false`).
+- `event.origin` matches an allowlisted eID host, and  
+- `event.source` is the iframe’s `contentWindow`.
 
-A naïve iframe **`onload`** probe is also unreliable: Chrome can show **`chrome-error://`** inside the frame and still fire `onload`.
+| Allowlisted iframe | Verdict |
+|---|---|
+| Extension message seen | **INSTALLED** (~88%) |
+| Page loads, no message within ~4.5 s | **NOT_INSTALLED** (~88%) |
+| Iframe cannot load (offline / blocked) | **INCONCLUSIVE** |
 
-The **primary** method (**Probe A2 — iframe content**) loads manifest icon paths in a hidden iframe, then:
+Requires network access to e-contract.be on first run from localhost.
 
-1. Reads `iframe.contentWindow.location.href` when allowed.
-2. Treats `chrome-extension://bkbdaodnaecdijpajecpncpdomgcoakc/…` as **strong positive**.
-3. Treats `chrome-error://`, `about:blank`, `onerror`, timeout, or failed **postMessage handshake** (`{ eid: "ping" }`) as **strong negative**.
-4. Runs **3 rounds** over paths `icon128.png`, `icon64.png`, `icon38.png`, `manifest.json` (first winning path per round).
-5. Requires **2/3 round agreement** for a strong iframe verdict.
+## Runtime message (when API is exposed)
 
-## Verdict logic
+If `chrome.runtime.sendMessage` is available on the page, the detector:
 
-| Primary iframe (A2) | Runtime message (B) | Result |
+1. Discovers `chrome.runtime` via `chrome.runtime` and `window.chrome.runtime`, with a **500 ms retry** if injection is delayed.
+2. Sends `{ type: "ping" }` to the extension id **three times** (100 ms apart), **400 ms timeout** per call.
+3. Classifies each attempt from `chrome.runtime.lastError.message` and optional response:
+   - **Installed:** “Could not establish connection”, “Receiving end does not exist”, or a non-null response (external listener).
+   - **Not installed:** “Extension not found”, “Invalid extension id”.
+4. **2/3 majority** → **STRONG** runtime outcome (90% confidence when it drives the verdict).
+
+If `chrome.runtime` is still missing after retry, runtime stays **NEUTRAL** (diagnostics show why).
+
+## Secondary: iframe content + load timing
+
+Version **1.0.3** has **no `web_accessible_resources`**, so img/fetch probes are **informational only**.
+
+Iframe probe (3 rounds):
+
+- Tries to read `contentWindow.location.href` (often **ACCESS_BLOCKED** on localhost → `chrome-error://`).
+- Records **load time** from `src` assignment to `onload` per round.
+- **Median &lt; 40 ms** → weak positive timing; **&gt; 100 ms** → weak negative (recorded in diagnostics only).
+- Timing **never** declares **Installed** by itself. It may slightly support a verdict only when **`chrome.runtime` ran** and runtime votes already lean the same way (no 2/3 majority). If runtime is unavailable on the page, result stays **INCONCLUSIVE** even when loads are fast.
+
+## Verdict priority
+
+| Order | Condition | Result |
 |---|---|---|
-| 2/3 rounds **strong positive** | (any) | **INSTALLED**, confidence **85+** |
-| 2/3 rounds **strong negative** | (any) | **NOT_INSTALLED**, confidence **85+** |
-| Mixed rounds | “Could not establish connection” / response | **INSTALLED** (~68–75%) — extension likely present, no external listener |
-| Mixed rounds | “Extension not found” / similar | **NOT_INSTALLED** (~68%) |
-| Mixed rounds | `chrome.runtime` unavailable / neutral | **INCONCLUSIVE** |
+| 1 | Runtime **STRONG** positive | **INSTALLED** (~90–95%) |
+| 2 | Runtime **STRONG** negative | **NOT_INSTALLED** (~90%) |
+| 3 | Iframe **STRONG_POSITIVE** | **INSTALLED** (95%) |
+| 4 | Iframe **STRONG_NEGATIVE** + runtime **STRONG_NEGATIVE** | **NOT_INSTALLED** (90%) |
+| 5 | Iframe **ACCESS_BLOCKED** + runtime **NEUTRAL** / unavailable | **INCONCLUSIVE** (45%); optional weak hint if runtime ran but split votes |
+| — | Runtime **STRONG** vs conflicting iframe | **Runtime wins** |
 
-**Probe B:** `chrome.runtime.sendMessage(ID, { type: "ping" })` with 600ms timeout when `chrome.runtime` exists.
-
-**Secondary signals** (forgeable, not verdict drivers): `signals.domBeacon`, `signals.windowMessage`.
+Allowlisted HTTPS eID sites: forgeable **DOM / postMessage** beacons can suggest installed (~72%) but are not used on localhost.
 
 ## Run locally (Windows)
 
 **Double-click `run.bat`** in this folder. You do **not** need Python pre-installed.
 
-1. If `py` / `python` is already on PATH, that is used.
-2. Otherwise **`run.bat` downloads portable Python 3.12** once into `.runtime\python` (internet required on first run only), then starts the server.
-3. If the download fails, **`serve.ps1`** serves the folder with PowerShell (no Python).
+1. If `py` / `python` is on PATH, that is used.
+2. Otherwise portable Python 3.12 is downloaded once into `.runtime\python`.
+3. If download fails, **`serve.ps1`** serves the folder with PowerShell.
 
-Then open the URL shown in the black console window in **Google Chrome** (usually `http://localhost:3000/`; if port 3000 is busy, **`run.bat` uses 3001–3010** automatically).
-
-**Leave the console window open** while you test. If the server fails, the window stays open with an error instead of closing immediately.
+Open the URL from the console in **Google Chrome** (`http://127.0.0.1:3000/` or next free port **3001–3010**). Leave the console window open while testing.
 
 Manual alternative:
 
 ```powershell
-py -m http.server 3000
+py -m http.server 3000 --bind 127.0.0.1
 ```
 
-- Banner: green **INSTALLED**, red **NOT_INSTALLED**, yellow **INCONCLUSIVE** + confidence %
-- **Re-run** — normal detection
-- **Debug** — `runEidDetector({ debug: true })` and per-iframe-attempt log
-- Checkbox **Show debug log** — keeps the debug `<pre>` visible
+### UI
 
-Console: paste `detector.js` or call `runEidDetector({ debug: true })`.
+- Verdict card with confidence and primary probe name
+- **Re-run** / **Run with debug** (iframe attempt log)
+- **Verbose** — timestamped steps in console and “Verbose step log” panel
+- **Diagnostic** box when result is **INCONCLUSIVE** (or when verbose is on): runtime availability, verbatim error, iframe load times, probes run
+
+Console API:
+
+```js
+runEidDetector({ debug: true, verbose: true })
+```
 
 ## Output shape
 
@@ -66,57 +91,34 @@ Console: paste `detector.js` or call `runEidDetector({ debug: true })`.
 {
   "status": "INSTALLED | NOT_INSTALLED | INCONCLUSIVE",
   "confidence": 0,
-  "primaryProbe": "iframe-content",
-  "extensionId": "bkbdaodnaecdijpajecpncpdomgcoakc",
-  "page": "http://localhost:3000/",
-  "pageAllowlisted": false,
+  "primaryProbe": "runtime-message | iframe-content | iframe-timing | content-script-beacon",
+  "diagnostics": { "chromeRuntimeAvailable": true, "runtimeErrorObserved": "...", "iframeLoadTimesMs": [] },
   "probes": {
-    "iframe": { "outcome": "...", "rounds": [] },
-    "runtimeMessage": { "outcome": "...", "raw": {} },
-    "img": { "informational": true, "imgWorks": false, "trials": [] },
-    "fetch": { "informational": true, "raw": {} }
+    "runtimeMessage": { "outcome": "STRONG_POSITIVE", "strength": "STRONG", "diagnostic": {}, "votes": {} },
+    "iframe": { "outcome": "ACCESS_BLOCKED", "medianLoadTimeMs": 12, "timingOutcome": "WEAK_POSITIVE" }
   },
-  "signals": { "domBeacon": false, "windowMessage": false },
-  "note": "...",
-  "debug": []
-}
-```
-
-`debug` is present only when `debug: true`.
-
-## Manifest icons (for probes)
-
-```json
-"icons": {
-  "64": "icon64.png",
-  "128": "icon128.png",
-  "38": "icon38.png"
+  "verboseLog": []
 }
 ```
 
 ## Test matrix
 
-Fill in on your machine after real Chrome runs (extension installed/uninstalled via `chrome://extensions`).
+Fill in on your machine (extension installed/uninstalled via `chrome://extensions`).
 
 | Extension state | Page | Expected |
 |---|---|---|
-| Installed, enabled | `http://localhost:3000` | **INSTALLED** if 2/3 iframe rounds see `chrome-extension://…`; else runtime tiebreaker |
-| Not installed | `http://localhost:3000` | **NOT_INSTALLED** if 2/3 iframe rounds see `chrome-error://` / failed handshake |
-| Installed, enabled | Allowlisted HTTPS (e.g. `https://www.e-contract.be/`) | Same primary probes; `signals` may show content-script beacon |
-| Not installed | Allowlisted HTTPS | **NOT_INSTALLED** when iframe + runtime agree |
+| Installed, enabled | `http://localhost:3000` | **INSTALLED** if allowlisted iframe sees content-script `postMessage` |
+| Not installed | `http://localhost:3000` | **NOT_INSTALLED** if allowlisted iframe loads with no extension message |
+| Installed, enabled | Allowlisted HTTPS (e.g. `https://www.e-contract.be/`) | Runtime + iframe; optional content-script signals |
+| Not installed | Allowlisted HTTPS | **NOT_INSTALLED** when runtime strong negative |
 
 ### Workspace test record
 
-Chrome `155.0.8059.40`, headless, fresh profile, extension **not** installed, `http://localhost:3000/`:
-
-| Case | Result |
-|---|---|
-| Not installed + localhost | **NOT_INSTALLED** — **90%** confidence. Primary iframe-content: 3/3 rounds **STRONG_NEGATIVE** (`chrome-error://` / failed handshake on manifest icon paths). |
-| Installed + localhost | NOT TESTED (extension not in workspace profiles) |
-| Installed / not installed + allowlisted site | NOT TESTED |
+Automated runs may use a profile **without** the extension. **Installed + localhost** must be verified on a machine where the eID extension is enabled; check the Diagnostic box if the verdict is inconclusive.
 
 ## Files
 
-- `detector.js` — `runEidDetector({ debug?: boolean })`
-- `index.html` — banner, Re-run, Debug, debug log
+- `detector.js` — `runEidDetector({ debug?, verbose? })`
+- `index.html` — harness, diagnostics, verbose log
+- `run.bat` / `setup-python.ps1` / `serve.ps1` — local server on Windows
 - `README.md` — this document
