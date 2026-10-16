@@ -1,6 +1,5 @@
-# One-time portable Python setup for run.bat (no admin installer required).
 param(
-  [string]$TargetDir = (Join-Path $PSScriptRoot ".runtime\python")
+  [string]$TargetDir = (Join-Path (Split-Path -Parent $PSScriptRoot) ".runtime\python")
 )
 
 $ErrorActionPreference = "Stop"
@@ -13,7 +12,6 @@ $url = "https://www.python.org/ftp/python/$version/$zipName"
 $zipPath = Join-Path $env:TEMP $zipName
 
 Write-Host "Downloading portable Python $version ($arch)..."
-Write-Host $url
 
 if (-not (Test-Path $TargetDir)) {
   New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null
@@ -23,8 +21,7 @@ Invoke-WebRequest -Uri $url -OutFile $zipPath -UseBasicParsing
 Expand-Archive -Path $zipPath -DestinationPath $TargetDir -Force
 Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
 
-$pthFiles = Get-ChildItem -Path $TargetDir -Filter "python*._pth"
-foreach ($pth in $pthFiles) {
+foreach ($pth in Get-ChildItem -Path $TargetDir -Filter "python*._pth") {
   $text = Get-Content -Raw -Path $pth.FullName
   if ($text -notmatch "(?m)^import site") {
     $text = $text -replace "(?m)^#\s*import site", "import site"
@@ -37,7 +34,7 @@ foreach ($pth in $pthFiles) {
 
 $pythonExe = Join-Path $TargetDir "python.exe"
 if (-not (Test-Path $pythonExe)) {
-  throw "Portable Python setup failed: python.exe not found in $TargetDir"
+  throw "Portable Python setup failed: $pythonExe"
 }
 
-Write-Host "Portable Python ready: $pythonExe"
+Write-Host "Ready: $pythonExe"

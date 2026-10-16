@@ -1,0 +1,12 @@
+{
+  "name": "eid-extension-detector",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local proof of concept to detect the Belgian eID Chrome extension in the active Chrome profile.",
+  "scripts": {
+    "start": "python server/serve.py --bind 127.0.0.1 --port 3000",
+    "snapshot": "powershell -NoProfile -ExecutionPolicy Bypass -File server/chrome-check.ps1 -Snapshot"
+  },
+  "keywords": ["chrome", "extension", "eid", "detector"],
+  "license": "UNLICENSED"
+}

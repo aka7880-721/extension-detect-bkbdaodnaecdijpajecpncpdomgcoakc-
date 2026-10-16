@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Detect Belgian eID Chrome Extension in the active Chrome profile">
+  <title>eID Extension Detector</title>
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <main class="layout">
+    <header class="top">
+      <span class="badge">Proof of concept</span>
+      <h1>eID Chrome Extension Detector</h1>
+      <p class="lead">Plain JavaScript client · local verification for extension <code>bkbdaodnaecdijpajecpncpdomgcoakc</code></p>
+      <div class="steps">
+        <div class="step"><strong>Step 1</strong>Click the Chrome window to test</div>
+        <div class="step"><strong>Step 2</strong>Run <code>run.bat</code> (profile captured once)</div>
+      </div>
+      <code class="ext-id">bkbdaodnaecdijpajecpncpdomgcoakc</code>
+    </header>
+
+    <section id="eid-verdict-card" class="verdict verdict--pending" aria-live="polite">
+      <div class="verdict__icon" id="eid-verdict-icon"></div>
+      <h2 class="verdict__label" id="eid-verdict-label">Initializing…</h2>
+      <p class="verdict__meta" id="eid-verdict-meta">—</p>
+      <div class="meter" aria-hidden="true"><div class="meter__fill" id="eid-confidence-fill"></div></div>
+      <div class="profile-row">
+        <span>Chrome profile</span>
+        <span id="eid-profile-chip">—</span>
+      </div>
+      <p class="verdict__note" id="eid-verdict-note"></p>
+    </section>
+
+    <details class="report">
+      <summary>Technical report (JSON)</summary>
+      <pre id="eid-detection-result">…</pre>
+    </details>
+
+    <p class="footer">Only the profile active when <strong>run.bat</strong> starts is evaluated.</p>
+  </main>
+  <script src="js/detector.js" defer></script>
+</body>
+</html>
