@@ -17,6 +17,7 @@ PUBLIC = ROOT / "public"
 VAR = ROOT / "var"
 VAR_RESULT = VAR / "result.json"
 RUN_ID_FILE = VAR / "run-id.txt"
+RUN_PROFILE_FILE = VAR / "run-profile.txt"
 CHECK_SCRIPT = SERVER_DIR / "chrome-check.ps1"
 _check_lock = threading.Lock()
 
@@ -27,29 +28,42 @@ def read_run_id() -> str:
     return ""
 
 
+def _invoke_check(run_id: str) -> None:
+    args = [
+        "powershell",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        str(CHECK_SCRIPT),
+    ]
+    if run_id:
+        args.extend(["-RunId", run_id])
+    subprocess.run(
+        args,
+        cwd=str(ROOT),
+        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+    )
+
+
 def run_profile_check(run_id: str) -> None:
+    """Run check twice: first pass often hits locked prefs / stale reads."""
     if not CHECK_SCRIPT.is_file():
         return
     with _check_lock:
-        args = [
-            "powershell",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(CHECK_SCRIPT),
-        ]
-        if run_id:
-            args.extend(["-RunId", run_id])
-        subprocess.run(
-            args,
-            cwd=str(ROOT),
-            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-        )
+        _invoke_check(run_id)
+        _invoke_check(run_id)
+
+
+def read_run_profile() -> str:
+    if RUN_PROFILE_FILE.is_file():
+        return RUN_PROFILE_FILE.read_text(encoding="utf-8").strip()
+    return ""
 
 
 def open_browser(url: str, delay: float) -> None:
     time.sleep(delay)
+    profile_dir = read_run_profile()
     candidates = [
         os.path.join(os.environ.get("ProgramFiles", ""), "Google", "Chrome", "Application", "chrome.exe"),
         os.path.join(os.environ.get("ProgramFiles(x86)", ""), "Google", "Chrome", "Application", "chrome.exe"),
@@ -57,8 +71,12 @@ def open_browser(url: str, delay: float) -> None:
     ]
     for exe in candidates:
         if exe and os.path.isfile(exe):
+            cmd = [exe, "--disable-popup-blocking"]
+            if profile_dir:
+                cmd.append(f"--profile-directory={profile_dir}")
+            cmd.append(url)
             subprocess.Popen(
-                [exe, "--disable-popup-blocking", url],
+                cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )

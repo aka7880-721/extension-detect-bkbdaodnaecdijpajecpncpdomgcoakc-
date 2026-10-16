@@ -88,7 +88,7 @@ function Resolve-Installed($profileDir) {
     if (-not $onDisk) {
       if ($null -ne $last -and $now -eq $last) {
         $stable++
-        if ($stable -ge 2) {
+        if ($stable -ge 4 -and $i -ge 8) {
           return @{ installed = $false; found = $found; onDisk = $onDisk }
         }
       } else {
@@ -138,6 +138,9 @@ try {
   }
 
   $profileDir = $ProfileDirectory
+  if (-not $profileDir -and (Test-Path -LiteralPath $runProfileFile)) {
+    $profileDir = (Get-Content -LiteralPath $runProfileFile -Raw).Trim()
+  }
   if (-not $profileDir) {
     $profileDir = Read-ActiveChromeProfile
   }
@@ -150,8 +153,6 @@ try {
     }
     exit 1
   }
-
-  Set-Content -LiteralPath $runProfileFile -Value $profileDir -Encoding ASCII -NoNewline
 
   $resolved = Resolve-Installed -profileDir $profileDir
   $installed = $resolved.installed

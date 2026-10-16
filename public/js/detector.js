@@ -8,7 +8,7 @@
   var EXTENSION_ID = "bkbdaodnaecdijpajecpncpdomgcoakc";
   var POLL_MS = 200;
   var TIMEOUT_MS = 20000;
-  var FIRST_DELAY_MS = 600;
+  var FIRST_DELAY_MS = 900;
 
   function getExpectedRunId() {
     try {
